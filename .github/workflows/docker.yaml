@@ -47,12 +47,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          sbom: true
+          provenance: mode=max
           tags: ${{ steps.meta-rfc6455-proxy.outputs.tags }}
           labels: ${{ steps.meta-rfc6455-proxy.outputs.labels }}
-
-      - name: Generate rfc6455-proxy artifact attestation
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-name: ${{ secrets.DOCKER_USERNAME }}/rfc6455-proxy
-          subject-digest: ${{ steps.build-push-rfc6455-proxy.outputs.digest }}
-          push-to-registry: true
