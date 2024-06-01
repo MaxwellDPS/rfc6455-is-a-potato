@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  headscale:
+    image: headscale/headscale:latest
+    container_name: headscale
+    volumes:
+      - headscale_data:/var/lib/headscale
+      - ./config/headscale.yaml:/etc/headscale/config.yaml
+    environment:
+      - HEADSCALE_CONFIG_FILE=/etc/headscale/config.yaml
+    ports:
+      - "8080:8080"
+      - "50443:50443"
+    networks:
+      - headscale_network
+
+  rfc6455-proxy:
+    image: some-rfc6455-proxy-image:latest
+    container_name: rfc6455-proxy
+    ports:
+      - "9000:9000"
+    networks:
+      - headscale_network
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - headscale
+      - rfc6455-proxy
+    networks:
+      - cloudflare-tunnel
+      - headscale_network
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    volumes:
+      - config/cloudflared.yaml:/etc/cloudflared/config.yaml
+    networks:
+      - cloudflare-tunnel
+
+volumes:
+  headscale_data:
+
+networks:
+  headscale_network:
+    driver: bridge
+
+  cloudflare-tunnel:
+    external: true
