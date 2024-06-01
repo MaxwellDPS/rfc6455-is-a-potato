@@ -14,19 +14,13 @@ on:
     types: [published]
   push:
       branches: [ "main" ]
-      # tags: [ 'v*.*.*' ]
-
-env:
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/rfc6455-proxy
 
 jobs:
   push_to_registry:
     name: Push Docker images to Docker Hub
     runs-on: ubuntu-latest
     permissions:
-      packages: write
       contents: read
-      # attestations: write
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -44,7 +38,7 @@ jobs:
         id: meta-rfc6455-proxy
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_NAME }}
+          images:  ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
 
       - name: Build and push rfc6455-proxy Docker image
         id: build-push-rfc6455-proxy
