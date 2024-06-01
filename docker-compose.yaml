@@ -13,7 +13,7 @@ services:
       - "prometheus-job=headscale"
 
   rfc6455-proxy:
-    image: maxwelldps/rfc6455-is-a-potato:main
+    image: maxwelldps/headscale-proxy:main
     container_name: rfc6455-proxy
     env_file:
       - .env
