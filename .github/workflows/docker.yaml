@@ -34,47 +34,25 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract metadata (tags, labels) for blackhole Image
-        id: meta-blackhole
+      - name: Extract metadata (tags, labels) for rfc6455-proxy Image
+        id: meta-rfc6455-proxy
         uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
         with:
           images: ${{ secrets.DOCKER_USERNAME }}/rfc6455-proxy
-      
-      - name: Extract metadata (tags, labels) for blackhole nginx Image
-        id: meta-blackhole-ngix
-        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
-        with:
-          images: ${{ secrets.DOCKER_USERNAME }}/rfc6455-proxy-nginx
 
-      - name: Build and push blackhole Docker image
-        id: build-push-blackhole
+      - name: Build and push rfc6455-proxy Docker image
+        id: build-push-rfc6455-proxy
         uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
         with:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ steps.meta-blackhole.outputs.tags }}
-          labels: ${{ steps.meta-blackhole.outputs.labels }}
-  
-      - name: Build and push blackhole nginx Docker image
-        id: build-push-blackhole-nginx
-        uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
-        with:
-          context: nginx/
-          file: ./nginx/Dockerfile-nginx
-          push: true
-          tags: ${{ steps.meta-blackhole-ngix.outputs.tags }}
-          labels: ${{ steps.meta-blackhole-ngix.outputs.labels }}
+          tags: ${{ steps.meta-rfc6455-proxy.outputs.tags }}
+          labels: ${{ steps.meta-rfc6455-proxy.outputs.labels }}
 
-      # - name: Generate blackhole artifact attestation
-      #   uses: actions/attest-build-provenance@v1
-      #   with:
-      #     subject-name: maxwelldps/blackhole
-      #     subject-digest: ${{ steps.build-push-blackhole.outputs.digest }}
-      #     push-to-registry: true
-      # - name: Generate blackhole nginx artifact attestation
-      #   uses: actions/attest-build-provenance@v1
-      #   with:
-      #     subject-name: maxwelldps/blackhole-nginx
-      #     subject-digest: ${{ steps.build-push-blackhole-nginx.outputs.digest }}
-      #     push-to-registry: true
+      - name: Generate rfc6455-proxy artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ secrets.DOCKER_USERNAME }}/rfc6455-proxy
+          subject-digest: ${{ steps.build-push-rfc6455-proxy.outputs.digest }}
+          push-to-registry: true

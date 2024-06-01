@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'headscale'
+    static_configs:
+      - targets: ['headscale:9090']
+  
+  - job_name: 'rfc6455-proxy'
+    static_configs: ['rfc6455-proxy:6969']
+
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx:80']
+
+  - job_name: 'cloudflared'
+    static_configs:
+      - targets: ['cloudflared:8080']

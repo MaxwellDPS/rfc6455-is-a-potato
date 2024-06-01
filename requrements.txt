@@ -1,3 +1,5 @@
-Flask
-Flask-Sockets
-requests
+quart
+requests_async
+websockets
+prometheus_client
+hypercorn

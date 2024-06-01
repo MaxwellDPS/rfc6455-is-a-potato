@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   headscale:
     image: headscale/headscale:latest
@@ -9,45 +7,70 @@ services:
       - ./config/headscale.yaml:/etc/headscale/config.yaml
     environment:
       - HEADSCALE_CONFIG_FILE=/etc/headscale/config.yaml
-    ports:
-      - "8080:8080"
-      - "50443:50443"
     networks:
       - headscale_network
+    labels:
+      - "prometheus-job=headscale"
 
   rfc6455-proxy:
     image: some-rfc6455-proxy-image:latest
     container_name: rfc6455-proxy
-    ports:
-      - "9000:9000"
+    env_file:
+      - .env
     networks:
       - headscale_network
+    labels:
+      - "prometheus-job=rfc6455-proxy"
 
   nginx:
     image: nginx:latest
     container_name: nginx
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf
-    ports:
-      - "80:80"
-      - "443:443"
     depends_on:
       - headscale
       - rfc6455-proxy
     networks:
       - cloudflare-tunnel
       - headscale_network
+    labels:
+      - "prometheus-job=nginx"
 
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
     volumes:
-      - config/cloudflared.yaml:/etc/cloudflared/config.yaml
+      - ./config/cloudflared.yaml:/etc/cloudflared/config.yaml
     networks:
       - cloudflare-tunnel
+    labels:
+      - "prometheus-job=cloudflared"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - headscale_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - headscale_network
 
 volumes:
   headscale_data:
+  grafana_data:
 
 networks:
   headscale_network:
