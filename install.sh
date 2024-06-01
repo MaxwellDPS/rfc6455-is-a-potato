@@ -1,4 +1,4 @@
 #!/bin/bash
 
 docker-compose pull
-docker-compose
+docker-compose 
