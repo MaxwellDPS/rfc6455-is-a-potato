@@ -44,7 +44,7 @@ jobs:
         id: meta-rfc6455-proxy
         uses: docker/metadata-action@v5
         with:
-          images: IMAGE ${{ env.IMAGE_NAME }}_NAME
+          images: ${{ env.IMAGE_NAME }}
 
       - name: Build and push rfc6455-proxy Docker image
         id: build-push-rfc6455-proxy
