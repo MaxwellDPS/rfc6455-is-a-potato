@@ -38,7 +38,7 @@ jobs:
         id: meta-rfc6455-proxy
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/headscale-proxy
+          images: ${{ secrets.DOCKER_USERNAME }}/rfc6455-proxy
 
       - name: Build and push rfc6455-proxy Docker image
         id: build-push-rfc6455-proxy
