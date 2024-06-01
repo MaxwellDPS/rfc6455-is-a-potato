@@ -46,7 +46,5 @@ jobs:
         with:
           context: .
           push: true
-          # sbom: true
-          # provenance: mode=max
           tags: ${{ steps.meta-rfc6455-proxy.outputs.tags }}
           labels: ${{ steps.meta-rfc6455-proxy.outputs.labels }}
