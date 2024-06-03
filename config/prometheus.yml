@@ -7,7 +7,8 @@ scrape_configs:
       - targets: ['headscale:9090']
   
   - job_name: 'rfc6455-proxy'
-    static_configs: ['rfc6455-proxy:6969']
+    static_configs: 
+      - targets: ['rfc6455-proxy:6969']
 
   - job_name: 'nginx'
     static_configs:

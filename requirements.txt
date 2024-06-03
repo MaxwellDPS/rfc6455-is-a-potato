@@ -1,5 +1,5 @@
 quart
-requests_async
+httpx
 websockets
 prometheus_client
 hypercorn

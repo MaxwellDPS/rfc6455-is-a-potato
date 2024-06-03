@@ -10,13 +10,13 @@
 #
 # https://myheadscale.example.com:443
 #
-server_url: http://{{DOMAIN}}
+server_url: https://vpn.chaos.com.co:443
 
 # Address to listen to / bind to on the server
 #
 # For production:
 # listen_addr: 0.0.0.0:8080
-listen_addr: 0.0.0:8080
+listen_addr: 0.0.0.0:8080
 
 # Address to listen to /metrics, you may want
 # to keep this endpoint private to your internal
@@ -40,12 +40,16 @@ grpc_listen_addr: 0.0.0.0:50443
 # are doing.
 grpc_allow_insecure: false
 
+
+private_key_path: /var/lib/headscale/private.key
+
 # The Noise section includes specific configuration for the
 # TS2021 Noise protocol
 noise:
   # The Noise private key is used to encrypt the
   # traffic between headscale and Tailscale clients when
-  # using the new Noise-based protocol.
+  # using the new Noise-based protocol. It must be different
+  # from the legacy private key.
   private_key_path: /var/lib/headscale/noise_private.key
 
 # List of IP prefixes to allocate tailaddresses from.
@@ -57,14 +61,15 @@ noise:
 # IPv6: https://github.com/tailscale/tailscale/blob/22ebb25e833264f58d7c3f534a8b166894a89536/net/tsaddr/tsaddr.go#LL81C52-L81C71
 # IPv4: https://github.com/tailscale/tailscale/blob/22ebb25e833264f58d7c3f534a8b166894a89536/net/tsaddr/tsaddr.go#L33
 # Any other range is NOT supported, and it will cause unexpected issues.
-prefixes:
-  v6: fd7a:115c:a1e0::/48
-  v4: 100.64.0.0/10
+ip_prefixes:
+  - fd7a:115c:a1e0::/48
+  - 100.64.0.0/10
 
+prefixes:
   # Strategy used for allocation of IPs to nodes, available options:
   # - sequential (default): assigns the next free IP from the previous given IP.
   # - random: assigns the next free IP from a pseudo-random IP generator (crypto/rand).
-  allocation: sequential
+  allocation: random
 
 # DERP is a relay system that Tailscale uses when a direct
 # connection cannot be established.
@@ -137,12 +142,30 @@ disable_check_updates: false
 # Time before an inactive ephemeral node is deleted?
 ephemeral_node_inactivity_timeout: 30m
 
-database:
-  type: sqlite
+# Period to check for node updates within the tailnet. A value too low will severely affect
+# CPU consumption of Headscale. A value too high (over 60s) will cause problems
+# for the nodes, as they won't get updates or keep alive messages frequently enough.
+# In case of doubts, do not touch the default 10s.
+node_update_check_interval: 10s
 
-  # SQLite config
-  sqlite:
-    path: /var/lib/headscale/db.sqlite
+# SQLite config
+db_type: sqlite3
+
+# For production:
+db_path: /var/lib/headscale/db.sqlite
+
+# # Postgres config
+# If using a Unix socket to connect to Postgres, set the socket path in the 'host' field and leave 'port' blank.
+# db_type: postgres
+# db_host: localhost
+# db_port: 5432
+# db_name: headscale
+# db_user: foo
+# db_pass: bar
+
+# If other 'sslmode' is required instead of 'require(true)' and 'disabled(false)', set the 'sslmode' you need
+# in the 'db_ssl' field. Refers to https://www.postgresql.org/docs/current/libpq-ssl.html Table 34.1.
+# db_ssl: false
 
   # # Postgres config
   # postgres:
@@ -160,8 +183,36 @@ database:
   #   # in the 'ssl' field. Refers to https://www.postgresql.org/docs/current/libpq-ssl.html Table 34.1.
   #   ssl: false
 
-### TLS configuration
-#
+# ### TLS configuration
+# #
+# ## Let's encrypt / ACME
+# #
+# # headscale supports automatically requesting and setting up
+# # TLS for a domain with Let's Encrypt.
+# #
+# # URL to ACME directory
+# acme_url: https://acme-v02.api.letsencrypt.org/directory
+
+# # Email to register with ACME provider
+# acme_email: ""
+
+# # Domain name to request a TLS certificate for:
+# tls_letsencrypt_hostname: ""
+
+# # Path to store certificates and metadata needed by
+# # letsencrypt
+# # For production:
+# tls_letsencrypt_cache_dir: /var/lib/headscale/cache
+
+# # Type of ACME challenge to use, currently supported types:
+# # HTTP-01 or TLS-ALPN-01
+# # See [docs/tls.md](docs/tls.md) for more information
+# tls_letsencrypt_challenge_type: HTTP-01
+# # When HTTP-01 challenge is chosen, letsencrypt must set up a
+# # verification endpoint, and it will be listening on:
+# # :http = port 80
+# tls_letsencrypt_listen: ":http"
+
 ## Use already defined certificates:
 tls_cert_path: ""
 tls_key_path: ""
@@ -239,11 +290,12 @@ dns_config:
   # `hostname.user.base_domain` (e.g., _myhost.myuser.example.com_).
   base_domain: example.com
 
-# Unix socket used for the CLI to connect without authentication
-# Note: for production you will want to set this to something like:
+# # Unix socket used for the CLI to connect without authentication
+# # Note: for production you will want to set this to something like:
 unix_socket: /var/run/headscale/headscale.sock
 unix_socket_permission: "0770"
-#
+
+
 # headscale supports experimental OpenID connect support,
 # it is still being tested and might have some bugs, please
 # help us test it.

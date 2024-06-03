@@ -22,14 +22,17 @@ Environment Variables:
 Example:
     $ HEADSCALE_URL="http://example.com" python tailscale_proxy.py
 """
-
 import os
+import traceback
 import uuid
 import asyncio
 import websockets
-from quart import Quart, request, make_response
-import requests_async as requests
+from quart import Quart, request, websocket, make_response, redirect, Response
+import httpx
 from prometheus_client import Counter, Histogram, Gauge, generate_latest
+import logging
+from typing import AsyncGenerator
+
 
 # Initialize the Quart application
 app = Quart(__name__)
@@ -37,8 +40,8 @@ app = Quart(__name__)
 DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "t")
 
 # Retrieve the Headscale URL from the environment variable or use the default value
-HEADSCALE_URL = os.getenv("HEADSCALE_URL", "http://headscale")
-TS2021_URL = f'http://{HEADSCALE_URL}:80/ts2021'
+HEADSCALE_URL = os.getenv("HEADSCALE_URL", "http://headscale:8080")
+TS2021_URL = f'{HEADSCALE_URL}/ts2021'
 
 # Generate a unique ID for this script run
 SCRIPT_RUN_ID = str(uuid.uuid4())
@@ -59,6 +62,10 @@ SCRIPT_RUN_GAUGE = Gauge('tailscale_proxy_script_run_id', 'Unique ID for this sc
 # Set the gauge to indicate the script is running
 SCRIPT_RUN_GAUGE.labels(script_run_id=SCRIPT_RUN_ID).set(1)
 
+# Configure logging
+logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO)
+logger = logging.getLogger(__name__)
+
 @app.route('/metrics')
 async def metrics():
     """Endpoint to serve Prometheus metrics."""
@@ -66,9 +73,7 @@ async def metrics():
     response.headers['Content-Type'] = 'text/plain; version=0.0.4; charset=utf-8'
     return response
 
-@app.route('/ts2021', methods=['POST'])
-@REQUEST_COUNT.count_exceptions()
-@REQUEST_LATENCY.time()
+@app.route('/ts2021', methods=['POST', 'GET'])
 async def proxy_upgrade():
     """
     Function to proxy the Tailscale client WebSocket Upgrade POST request.
@@ -77,14 +82,21 @@ async def proxy_upgrade():
     and forwards the request to the target server. The response from the target server
     is then returned to the client.
     """
+    logger.info("Received POST request to /ts2021")
 
     # Increment request count
     REQUEST_COUNT.labels(script_run_id=SCRIPT_RUN_ID).inc()
+
+    if request.method == "GET":
+        if DEBUG:
+            return "<h1>rfc6455-is-a-potato 🥔</h1>", 418,  {"X-Powered-By": "🥔"}
+        return redirect("/", 301)
 
     # Start request latency timer
     with REQUEST_LATENCY.labels(script_run_id=SCRIPT_RUN_ID).time():
         # Get request headers
         headers = {key: value for key, value in request.headers.items()}
+        logger.debug(f"Request headers: {headers}")
 
         # Count user agent occurrences
         user_agent = headers.get('User-Agent', 'unknown')
@@ -98,26 +110,70 @@ async def proxy_upgrade():
             request_data = await request.data
             request_size = len(request_data)
             REQUEST_SIZE.labels(script_run_id=SCRIPT_RUN_ID).observe(request_size)
+            logger.debug(f"Request size: {request_size} bytes")
 
             # Forward the request to the target server
-            response = await requests.post(TS2021_URL, headers=headers, data=request_data)
+            logger.debug(f"Request headers: {headers}")
+            logger.debug(f"Request request_data: {request_data}")
+            logger.debug(f"Request request_data: {TS2021_URL}")
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(TS2021_URL, headers=headers)
+
+            logger.info(f"Forwarded request to {TS2021_URL}, received response with status code {response.status_code}")
 
             # Measure response size
             response_size = len(response.content)
             RESPONSE_SIZE.labels(script_run_id=SCRIPT_RUN_ID).observe(response_size)
+            logger.debug(f"Response size: {response_size} bytes")
+
+            logger.debug(f'response: {response.status_code} {response.headers}')
+            logger.debug(f"Request request_data: {request_data}")
 
             # Count the status code
             STATUS_COUNT.labels(status_code=response.status_code, script_run_id=SCRIPT_RUN_ID).inc()
         except Exception as e:
             # Increment error count
             ERROR_COUNT.labels(script_run_id=SCRIPT_RUN_ID).inc()
+            traceback.print_exc()
+            logger.error(f"Error while proxying request: {e}", exc_info=True)
             raise e
 
         # Create a Quart Response object with the proxied response
-        return response.content, response.status_code, response.headers.items()
+        # return response.content, response.status_code, headers.items()
+        return Response(
+            response=response.content,
+            status=response.status_code,
+            headers={}.update(response.headers.items())
+        )
+
+class Broker:
+    def __init__(self) -> None:
+        self.connections = set()
+
+    async def publish(self, message: str) -> None:
+        for connection in self.connections:
+            await connection.put(message)
+
+    async def subscribe(self) -> AsyncGenerator[str, None]:
+        connection = asyncio.Queue()
+        self.connections.add(connection)
+        try:
+            while True:
+                yield await connection.get()
+        finally:
+            self.connections.remove(connection)
+
+
+broker = Broker()
+
+async def _receive() -> None:
+    while True:
+        websocket.headers['Upgrade'] = 'tailscale-control-protocol'
+        message = await websocket.receive()
+        await broker.publish(message)
 
 @app.websocket('/ts2021')
-@WEBSOCKET_CONNECTIONS.count_exceptions()
 async def proxy_ws():
     """
     Function to proxy Tailscale WebSocket messages.
@@ -126,22 +182,31 @@ async def proxy_ws():
     creates a WebSocket connection to the target server. It forwards messages
     between the client and the target server.
     """
+    logger.info("Received WebSocket connection to /ts2021")
+
     # Create a WebSocket connection to the target server
     try:
         # Increment websocket connection count
         WEBSOCKET_CONNECTIONS.labels(script_run_id=SCRIPT_RUN_ID).inc()
-        async with websockets.connect(TS2021_URL) as target_ws:
-            async def forward_message():
-                async for message in target_ws:
-                    WEBSOCKET_MESSAGES.labels(script_run_id=SCRIPT_RUN_ID).inc()
-                    await target_ws.send(message)
-                    WEBSOCKET_MESSAGES_SUCCESS.labels(script_run_id=SCRIPT_RUN_ID).inc()
-            await asyncio.gather(forward_message())
+        websocket.headers['Upgrade'] = 'tailscale-control-protocol'
+        task = asyncio.ensure_future(_receive())
+        async for message in broker.subscribe():
+            logger.debug(f"Received WebSocket message: {message}")
+            WEBSOCKET_MESSAGES.labels(script_run_id=SCRIPT_RUN_ID).inc()
+            await websocket.send(message)
+            WEBSOCKET_MESSAGES_SUCCESS.labels(script_run_id=SCRIPT_RUN_ID).inc()
+            logger.debug("Forwarded WebSocket message to target server")
     except Exception as e:
         # Increment error count
         ERROR_COUNT.labels(script_run_id=SCRIPT_RUN_ID).inc()
+        logger.error(f"Error in WebSocket proxy: {e}", exc_info=True)
         raise e
+    finally:
+        task.cancel()
+        await task
+    
 
 if __name__ == '__main__':
     # Run the Quart application
+    logger.info("Starting Quart application")
     app.run(host='0.0.0.0', port=6969, debug=DEBUG)

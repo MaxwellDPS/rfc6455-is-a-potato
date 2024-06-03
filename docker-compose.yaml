@@ -2,9 +2,12 @@ services:
   headscale:
     image: headscale/headscale:0.22.3
     container_name: headscale
+    command: bash /launch.sh
     volumes:
       - headscale_data:/var/lib/headscale
       - ./config/headscale.yaml:/etc/headscale/config.yaml
+      - ./config/headscale.sh:/launch.sh
+      - headscale_socket:/var/run/headscale/
     environment:
       - HEADSCALE_CONFIG_FILE=/etc/headscale/config.yaml
     networks:
@@ -12,9 +15,19 @@ services:
     labels:
       - "prometheus-job=headscale"
 
+  headscale-admin:
+    image: goodieshq/headscale-admin:latest
+    container_name: headscale-admin
+    restart: unless-stopped
+    ports:
+      - 8081:80
+    networks:
+      - headscale_network
+
   rfc6455-proxy:
     image: maxwelldps/rfc6455-proxy:main
     container_name: rfc6455-proxy
+    build: .
     env_file:
       - .env
     networks:
@@ -24,9 +37,12 @@ services:
 
   nginx:
     image: nginx:latest
+    tty: true
     container_name: nginx
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./config/nginx.conf:/etc/nginx/nginx.conf
+      - nginx_tls:/etc/nginx/ssl
+      - ./config/99-nginx-ssl.sh:/docker-entrypoint.d/99-nginx-ssl.sh
     depends_on:
       - headscale
       - rfc6455-proxy
@@ -35,12 +51,22 @@ services:
       - headscale_network
     labels:
       - "prometheus-job=nginx"
+    ports:
+      - 8080:80
+      - 8443:443
+    
 
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
-    volumes:
-      - ./config/cloudflared.yaml:/etc/cloudflared/config.yaml
+    command: 
+      - tunnel
+      - '--metrics'
+      - '0.0.0.0:8080'
+      - run
+      - '--token'
+      - ${CLOUDFLARE_TOKEN}
+      - headscale
     networks:
       - cloudflare-tunnel
     labels:
@@ -50,7 +76,7 @@ services:
     image: prom/prometheus:latest
     container_name: prometheus
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
     networks:
@@ -59,8 +85,8 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+    env_file:
+      - .env
     volumes:
       - grafana_data:/var/lib/grafana
     ports:
@@ -69,12 +95,15 @@ services:
       - headscale_network
 
 volumes:
-  headscale_data:
+  nginx_tls:
   grafana_data:
+  headscale_data:
+  headscale_socket:
 
 networks:
   headscale_network:
     driver: bridge
 
   cloudflare-tunnel:
-    external: true
+    driver: bridge
+    # external: true
